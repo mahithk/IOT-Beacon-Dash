@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Control Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #4a6fa5;
+            --secondary: #6c757d;
+            --success: #28a745;
+            --danger: #dc3545;
+            --warning: #ffc107;
+            --info: #17a2b8;
+            --light: #f8f9fa;
+            --dark: #343a40;
+        }
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .card-title {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 500;
+            color: var(--primary);
+        }
+        
+        .sensor-value {
+            font-size: 2.5rem;
+            font-weight: 300;
+            margin: 10px 0;
+        }
+        
+        .unit {
+            font-size: 1rem;
+            color: var(--secondary);
+        }
+        
+        .control-btn {
+            display: inline-block;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            background-color: var(--primary);
+            color: white;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.3s;
+        }
+        
+        .control-btn:hover {
+            background-color: #3a5a8f;
+        }
+        
+        .control-btn.off {
+            background-color: var(--danger);
+        }
+        
+        .control-btn.on {
+            background-color: var(--success);
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.on {
+            background-color: var(--success);
+        }
+        
+        .status-indicator.off {
+            background-color: var(--danger);
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 250px;
+            width: 100%;
+        }
+        
+        .history-card {
+            grid-column: 1 / -1;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Temperature</h2>
+                <span class="status-indicator on"></span>
+            </div>
+            <div class="sensor-value" id="temperature">--</div>
+            <div class="unit">°C</div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Humidity</h2>
+                <span class="status-indicator on"></span>
+            </div>
+            <div class="sensor-value" id="humidity">--</div>
+            <div class="unit">%</div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Light Control</h2>
+                <span class="status-indicator off" id="light-status"></span>
+            </div>
+            <button class="control-btn off" id="light-btn">Turn On</button>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Fan Control</h2>
+                <span class="status-indicator off" id="fan-status"></span>
+            </div>
+            <button class="control-btn off" id="fan-btn">Turn On</button>
+        </div>
+        
+        <div class="card history-card">
+            <div class="card-header">
+                <h2 class="card-title">Sensor History</h2>
+            </div>
+            <div class="chart-container">
+                <canvas id="history-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ws = new WebSocket('ws://' + window.location.host + '/ws/devices');
+        const temperatureEl = document.getElementById('temperature');
+        const humidityEl = document.getElementById('humidity');
+        const lightBtn = document.getElementById('light-btn');
+        const lightStatus = document.getElementById('light-status');
+        const fanBtn = document.getElementById('fan-btn');
+        const fanStatus = document.getElementById('fan-status');
+        
+        const historyChart = new Chart(
+            document.getElementById('history-chart'),
+            {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Temperature (°C)',
+                            borderColor: '#4a6fa5',
+                            backgroundColor: 'rgba(74, 111, 165, 0.1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Humidity (%)',
+                            borderColor: '#6c757d',
+                            backgroundColor: 'rgba(108, 117, 125, 0.1)',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'realtime',
+                            realtime: {
+                                duration: 60000,
+                                refresh: 1000,
+                                delay: 1000
+                            }
+                        }
+                    }
+                }
+            }
+        );
+        
+        const tempData = historyChart.data.datasets[0].data;
+        const humidityData = historyChart.data.datasets[1].data;
+        
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            temperatureEl.textContent = data.temperature.toFixed(1);
+            humidityEl.textContent = data.humidity.toFixed(1);
+            
+            updateControl(data.lightOn, lightBtn, lightStatus);
+            updateControl(data.fanOn, fanBtn, fanStatus);
+            
+            const now = new Date();
+            tempData.push({x: now, y: data.temperature});
+            humidityData.push({x: now, y: data.humidity});
+            
+            if (tempData.length > 60) {
+                tempData.shift();
+                humidityData.shift();
+            }
+            
+            historyChart.update('quiet');
+        };
+        
+        lightBtn.addEventListener('click', () => {
+            ws.send(JSON.stringify({command: 'toggleLight'}));
+        });
+        
+        fanBtn.addEventListener('click', () => {
+            ws.send(JSON.stringify({command: 'toggleFan'}));
+        });
+        
+        function updateControl(state, button, indicator) {
+            if (state) {
+                button.textContent = 'Turn Off';
+                button.classList.remove('off');
+                button.classList.add('on');
+                indicator.classList.remove('off');
+                indicator.classList.add('on');
+            } else {
+                button.textContent = 'Turn On';
+                button.classList.remove('on');
+                button.classList.add('off');
+                indicator.classList.remove('on');
+                indicator.classList.add('off');
+            }
+        }
+    </script>
+</body>
+</html>
